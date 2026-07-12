@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>컴퓨터수리 - 정직한 출장 수리</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+    <script type="text/javascript">
+        (function(){
+            emailjs.init({
+              publicKey: "OE8CKlHlTG3W9_oUz",
+            });
+        })();
+    </script>
+    <style>
+        body {
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-image: linear-gradient(rgba(11, 19, 43, 0.90), rgba(15, 32, 75, 0.88)), url('https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=1920&q=80');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            min-height: 100vh;
+            color: #f8fafc;
+        }
+        .glass-box {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        }
+        .clipboard-clip {
+            position: absolute;
+            top: -24px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100px;
+            height: 36px;
+            background: #eab308;
+            border-radius: 10px 10px 0 0;
+            box-shadow: inset 0 2px 4px rgba(255,255,255,0.4), 0 4px 10px rgba(0,0,0,0.3);
+            z-index: 20;
+        }
+    </style>
+</head>
+<body class="relative antialiased min-h-screen flex flex-col justify-between">
+
+    <header class="w-full max-w-7xl mx-auto px-6 py-4 flex items-center justify-between z-20 bg-slate-900/70 backdrop-blur-md border-b border-white/10 sticky top-0">
+        <div class="flex items-center space-x-2">
+            <span class="text-2xl font-black tracking-wider text-white flex items-center">
+                <i class="fa-solid fa-screwdriver-wrench mr-2 text-yellow-400"></i>컴퓨터수리
+            </span>
+        </div>
+        <nav class="flex items-center space-x-4 text-sm font-medium">
+            <button onclick="goHome()" class="hover:text-yellow-400 transition cursor-pointer">HOME</button>
+            <span class="text-slate-600">|</span>
+            <button onclick="openLoginModal()" class="hover:text-yellow-400 transition font-bold text-yellow-300 cursor-pointer">관리자</button>
+            <a href="tel:070-8098-9562" class="ml-4 bg-yellow-400 text-slate-950 px-4 py-2 rounded-full font-bold shadow-lg hover:bg-yellow-300 transition flex items-center">
+                <i class="fa-solid fa-phone mr-1.5 animate-bounce"></i> 070-8098-9562
+            </a>
+        </nav>
+    </header>
+
+    <div id="mainView" class="w-full space-y-24 pb-16">
+
+        <section class="w-full max-w-7xl mx-auto px-6 pt-12 grid grid-cols-1 lg:grid-cols-12 gap-12 items-center relative z-10">
+            <div class="lg:col-span-5 flex flex-col items-center">
+                <div class="relative w-full max-w-md glass-box rounded-2xl px-6 pt-10 pb-8 text-slate-100 border border-cyan-500/20">
+                    <div class="clipboard-clip"></div>
+
+                    <div class="flex items-center justify-between border-b border-white/10 pb-3 mb-6">
+                        <h2 class="text-lg font-extrabold tracking-tight text-white flex items-center">
+                            <i class="fa-solid fa-file-pen text-cyan-400 mr-2"></i> 서비스 간편 신청
+                        </h2>
+                        <span class="text-xs text-cyan-300 font-semibold bg-cyan-500/20 px-2.5 py-0.5 rounded border border-cyan-400/30">24시간 신속 출장</span>
+                    </div>
+
+                    <form id="bookingForm" onsubmit="handleFormSubmit(event)" class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-300 mb-1">작성자 *</label>
+                            <input type="text" id="custName" required placeholder="성함 입력" class="w-full px-3 py-2 bg-slate-950/60 border border-slate-700 rounded-lg focus:ring-2 focus:ring-cyan-500 text-sm text-white placeholder-slate-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-300 mb-1">비밀번호 *</label>
+                            <input type="password" id="custPw" required placeholder="비밀번호" class="w-full px-3 py-2 bg-slate-950/60 border border-slate-700 rounded-lg focus:ring-2 focus:ring-cyan-500 text-sm text-white placeholder-slate-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-300 mb-1">전화번호 *</label>
+                            <input type="tel" id="custPhone" required placeholder="010-0000-0000" class="w-full px-3 py-2 bg-slate-950/60 border border-slate-700 rounded-lg focus:ring-2 focus:ring-cyan-500 text-sm text-white placeholder-slate-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-300 mb-1">제목 및 증상 요약 *</label>
+                            <input type="text" id="custTitle" required placeholder="예: 부팅이 안 됩니다" class="w-full px-3 py-2 bg-slate-950/60 border border-slate-700 rounded-lg focus:ring-2 focus:ring-cyan-500 text-sm text-white placeholder-slate-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-300 mb-1">내용 상세</label>
+                            <textarea id="custDetails" rows="3" placeholder="고장 증상을 적어주세요." class="w-full px-3 py-2 bg-slate-950/60 border border-slate-700 rounded-lg focus:ring-2 focus:ring-cyan-500 text-sm text-white placeholder-slate-500"></textarea>
+                        </div>
+                        <button type="submit" class="w-full bg-cyan-600 text-white font-bold py-3 px-4 rounded-xl shadow-lg hover:bg-cyan-500 transition cursor-pointer">
+    실시간 접수하기
+</button>
+<p style="font-size: 13px; color: #aaa; text-align: center; margin-top: 8px;">
+    * 접수 시 15분 이내 담당 기사가 연락드립니다.
+</p>
+</form>
+                </div>
+            </div>
+
+            <div class="lg:col-span-7 space-y-6">
+                <span class="bg-cyan-500/20 border border-cyan-400/30 text-yellow-300 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
+                    정직한 현장 방문 수리
+                </span>
+                <h1 class="text-4xl md:text-5xl font-black text-white leading-tight">
+                    컴퓨터 출장 수리, 판매 <br>
+                    <span class="text-yellow-400">투명하고 정확한 솔루션</span>
+                </h1>
+                <p class="text-slate-300 text-base leading-relaxed max-w-xl">
+                    과잉 수리 없는 정직한 진단과 빠른 방문 서비스를 제공합니다. 데스크톱, 노트북, 데이터 복구까지 확실하게 해결해 드립니다.
+                </p>
+
+                <div class="pt-1">
+                    <a href="tel:070-8098-9562" class="inline-flex items-center bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-black py-3.5 px-6 rounded-xl shadow-xl transition text-base cursor-pointer">
+                        <i class="fa-solid fa-phone mr-3 text-lg animate-bounce"></i> 전화로 바로 문의하기 (070-8098-9562)
+                    </a>
+                </div>
+
+                <div class="glass-box rounded-xl border border-white/10 p-4 max-w-md relative overflow-hidden">
+                    <div class="flex items-center justify-between mb-2.5">
+                        <span class="text-xs font-bold text-white flex items-center gap-1.5">
+                            <i class="fa-solid fa-comment-dots text-cyan-400"></i> 실제 이용 후기
+                        </span>
+                        <span class="text-yellow-400 text-[11px]" id="reviewStars"></span>
+                    </div>
+                    <div id="reviewContent" style="transition: opacity 0.4s ease;">
+                        <img id="reviewPhoto" class="w-full h-24 object-cover rounded-lg mb-2.5 hidden" src="" alt="후기 사진">
+                        <div class="flex items-start gap-3">
+                            <div class="w-9 h-9 shrink-0 rounded-full bg-cyan-500/20 border border-cyan-400/30 flex items-center justify-center text-cyan-300 font-bold text-sm" id="reviewAvatar"></div>
+                            <div class="min-w-0">
+                                <div class="flex items-center gap-1.5 mb-0.5">
+                                    <span class="text-xs font-semibold text-white" id="reviewName"></span>
+                                    <span class="text-[10px] text-cyan-300 bg-cyan-500/10 border border-cyan-400/20 rounded px-1.5 py-0.5 hidden" id="reviewPhotoBadge"><i class="fa-solid fa-camera"></i> 포토후기</span>
+                                </div>
+                                <p class="text-xs text-slate-300 leading-relaxed" id="reviewText"></p>
+                                <div class="mt-2 pl-3 border-l-2 border-cyan-400/30 flex items-start gap-1.5">
+                                    <i class="fa-solid fa-arrow-turn-up fa-rotate-90 text-cyan-400 text-[10px] mt-0.5"></i>
+                                    <p class="text-[11px] text-slate-400 leading-relaxed"><span class="text-cyan-300 font-semibold">사장님 답글</span> <span id="reviewReply"></span></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="h-0.5 bg-white/10 rounded-full mt-3 overflow-hidden">
+                        <div class="h-full bg-cyan-400 rounded-full" id="reviewProgress" style="width:0%;"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="w-full max-w-5xl mx-auto px-6">
+            <div class="text-center space-y-2 mb-8">
+                <span class="text-xs bg-yellow-400 text-slate-950 px-3 py-1 rounded-full font-bold">믿고 맡기는 이유</span>
+                <h2 class="text-2xl md:text-3xl font-black text-white">수리 이후까지 책임지는 이유</h2>
+                <p class="text-xs text-slate-400">수리가 끝났다고 끝이 아닙니다. 방문부터 사후관리까지 이어지는 케어를 제공합니다.</p>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="glass-box rounded-xl border border-cyan-500/20 p-5 flex items-start gap-4">
+                    <span class="text-3xl font-black text-cyan-400/40 leading-none shrink-0">01</span>
+                    <div class="flex-1 space-y-1 pt-1">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-house-user text-cyan-300"></i>
+                            <p class="font-bold text-white text-sm">방문 서비스</p>
+                        </div>
+                        <p class="text-xs text-slate-400 leading-relaxed">편한 날짜와 시간에 맞춰 약속드리고, 접수부터 방문까지 정확한 시간에 찾아갑니다.</p>
+                    </div>
+                </div>
+                <div class="glass-box rounded-xl border border-yellow-400/20 p-5 flex items-start gap-4">
+                    <span class="text-3xl font-black text-yellow-400/40 leading-none shrink-0">02</span>
+                    <div class="flex-1 space-y-1 pt-1">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-comments text-yellow-300"></i>
+                            <p class="font-bold text-white text-sm">1:1 맞춤 상담</p>
+                        </div>
+                        <p class="text-xs text-slate-400 leading-relaxed">담당 엔지니어가 증상과 수리 과정, 예상 비용을 직접 자세히 설명해 드립니다.</p>
+                    </div>
+                </div>
+                <div class="glass-box rounded-xl border border-yellow-400/20 p-5 flex items-start gap-4">
+                    <span class="text-3xl font-black text-yellow-400/40 leading-none shrink-0">03</span>
+                    <div class="flex-1 space-y-1 pt-1">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-rotate-left text-yellow-300"></i>
+                            <p class="font-bold text-white text-sm">재고장 무상 서비스</p>
+                        </div>
+                        <p class="text-xs text-slate-400 leading-relaxed">같은 증상이 7일 이내 재발하면 비용 부담 없이 다시 수리해 드립니다.</p>
+                    </div>
+                </div>
+                <div class="glass-box rounded-xl border border-cyan-500/20 p-5 flex items-start gap-4">
+                    <span class="text-3xl font-black text-cyan-400/40 leading-none shrink-0">04</span>
+                    <div class="flex-1 space-y-1 pt-1">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-phone-volume text-cyan-300"></i>
+                            <p class="font-bold text-white text-sm">해피콜 서비스</p>
+                        </div>
+                        <p class="text-xs text-slate-400 leading-relaxed">수리 완료 후 전화로 만족도를 확인하고, 불편하신 점이 있다면 만족하실 때까지 다시 찾아갑니다.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="w-full max-w-5xl mx-auto px-6">
+            <div class="glass-box rounded-2xl p-8 shadow-2xl space-y-6">
+                <div class="text-center space-y-2 border-b border-white/10 pb-6">
+                    <span class="text-xs bg-yellow-400 text-slate-950 px-3 py-1 rounded-full font-bold">정찰제 표준 안내</span>
+                    <h2 class="text-2xl md:text-3xl font-black text-white">수리/기술요금표</h2>
+                    <p class="text-xs text-slate-400">합리적이고 투명한 기술료 기준을 고지합니다.</p>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead>
+                            <tr class="bg-slate-800 text-yellow-400 uppercase tracking-wider">
+                                <th class="p-3 border-b border-slate-700 w-24">구분</th>
+                                <th class="p-3 border-b border-slate-700 w-40">종류</th>
+                                <th class="p-3 border-b border-slate-700">내역</th>
+                                <th class="p-3 border-b border-slate-700 text-right w-36">요금</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-800 text-slate-200">
+                            <tr>
+                                <td class="p-3 font-bold text-cyan-400 align-middle" rowspan="11">소프트웨어</td>
+                                <td class="p-3 font-semibold align-middle" rowspan="2">운영체제 설치대행</td>
+                                <td class="p-3 text-slate-300">WINDOW 설치대행</td>
+                                <td class="p-3 text-right font-bold text-white">30,000</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 text-slate-300">노트북 WINDOW 설치대행</td>
+                                <td class="p-3 text-right font-bold text-white">30,000</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-semibold">응용프로그램 설치대행</td>
+                                <td class="p-3 text-slate-300">프로그램 1개</td>
+                                <td class="p-3 text-right">7,000~부터</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-semibold align-middle" rowspan="2">바이러스</td>
+                                <td class="p-3 text-slate-300">검사 / 치료</td>
+                                <td class="p-3 text-right text-yellow-300">엔지니어 상담</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 text-slate-300">악성AD웨어 제거</td>
+                                <td class="p-3 text-right text-yellow-300">엔지니어 상담</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-semibold align-middle" rowspan="3">백업</td>
+                                <td class="p-3 text-slate-300">1GB 이하</td>
+                                <td class="p-3 text-right text-yellow-300">엔지니어 상담</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 text-slate-300">5GB 이하</td>
+                                <td class="p-3 text-right text-yellow-300">엔지니어 상담</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 text-slate-300">5GB 이상 / 기타</td>
+                                <td class="p-3 text-right text-yellow-300">엔지니어 상담</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-semibold align-middle" rowspan="3">네트워크</td>
+                                <td class="p-3 text-slate-300">공유설정 1대</td>
+                                <td class="p-3 text-right text-yellow-300">엔지니어 상담</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 text-slate-300">무선공유기 설치</td>
+                                <td class="p-3 text-right text-yellow-300">엔지니어 상담</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 text-slate-300">네트워크공사 (가설경로나 현장에 따라 다르니 상담 후 진행)</td>
+                                <td class="p-3 text-right text-yellow-300">엔지니어 상담</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-bold text-cyan-400 align-middle" rowspan="3">하드웨어</td>
+                                <td class="p-3 font-semibold align-middle" rowspan="2">주변기기 / 부품교체</td>
+                                <td class="p-3 text-slate-300">각종 장치 추가</td>
+                                <td class="p-3 text-right text-yellow-300" rowspan="2">엔지니어 상담</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 text-slate-300">기존부품 불량으로 인한 교체</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-semibold">점검(수리비로 인한 취소시)</td>
+                                <td class="p-3 text-slate-300" colspan="2">[점검의 난이도에 따라 10,000원 부터]</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-bold text-cyan-400 align-middle" rowspan="11">복구</td>
+                                <td class="p-3 font-semibold align-middle" rowspan="3">소프트웨어 복구</td>
+                                <td class="p-3 text-slate-300">500G 이하</td>
+                                <td class="p-3 text-right text-yellow-300">엔지니어 상담</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 text-slate-300">1TB 이하</td>
+                                <td class="p-3 text-right text-yellow-300">엔지니어 상담</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 text-slate-300">1TB 이상</td>
+                                <td class="p-3 text-right text-yellow-300">엔지니어 상담</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-semibold align-middle" rowspan="3">하드웨어 복구</td>
+                                <td class="p-3 text-slate-300">500G 이하</td>
+                                <td class="p-3 text-right text-yellow-300">엔지니어 상담</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 text-slate-300">1TB 이하</td>
+                                <td class="p-3 text-right text-yellow-300">엔지니어 상담</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 text-slate-300">1TB 이상</td>
+                                <td class="p-3 text-right text-yellow-300">엔지니어 상담</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-slate-400 italic bg-slate-900/40" colspan="3">
+                                    ※ 스페셜OS, DB등의 파일은 복구시 비용이 다를 수 있으니 반드시 엔지니어와 상담 후 진행 바랍니다.
+                                </td>
+                                <td class="p-3 bg-slate-900/40"></td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-semibold align-middle" rowspan="2">USB 소프트웨어</td>
+                                <td class="p-3 text-slate-300">16GB 이하</td>
+                                <td class="p-3 text-right text-yellow-300">엔지니어 상담</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 text-slate-300">16GB 이상</td>
+                                <td class="p-3 text-right text-yellow-300">엔지니어 상담</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-semibold align-middle" rowspan="2">USB 하드웨어</td>
+                                <td class="p-3 text-slate-300">16GB 이하</td>
+                                <td class="p-3 text-right text-yellow-300">엔지니어 상담</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 text-slate-300">16GB 이상</td>
+                                <td class="p-3 text-right text-yellow-300">엔지니어 상담</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <section class="w-full max-w-5xl mx-auto px-6 text-center space-y-6 glass-box rounded-2xl p-10">
+            <h2 class="text-2xl font-black text-white">고객센터</h2>
+            <p class="text-xs text-slate-300">궁금하신 점이나 서비스 문의가 있으시면 연락 주세요.</p>
+            <div class="text-3xl md:text-4xl font-black text-yellow-400 tracking-wider">
+                Tel. <a href="tel:070-8098-9562" class="hover:underline">070-8098-9562</a>
+            </div>
+        </section>
+
+    </div>
+
+    <div id="adminView" class="hidden w-full max-w-7xl mx-auto px-6 py-12 flex-1 z-20">
+        <div class="glass-box rounded-2xl p-8 text-slate-100 shadow-2xl">
+            <div class="flex justify-between items-center mb-6 border-b border-white/10 pb-4">
+                <h2 class="text-2xl font-black text-white"><i class="fa-solid fa-list-check mr-2"></i> 관리자 대시보드 : 접수 순서 목록</h2>
+                <button onclick="clearStorage()" class="text-xs bg-red-500/20 text-red-300 border border-red-500/30 px-3 py-1 rounded hover:bg-red-500/30 cursor-pointer">데이터 초기화</button>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-800 text-slate-300 text-xs uppercase tracking-wider">
+                            <th class="p-3 border-b border-slate-700">순번</th>
+                            <th class="p-3 border-b border-slate-700">접수일시</th>
+                            <th class="p-3 border-b border-slate-700">작성자</th>
+                            <th class="p-3 border-b border-slate-700">연락처</th>
+                            <th class="p-3 border-b border-slate-700">제목</th>
+                            <th class="p-3 border-b border-slate-700">내용</th>
+                            <th class="p-3 border-b border-slate-700">상태</th>
+                        </tr>
+                    </thead>
+                    <tbody id="adminTableBody" class="text-xs text-slate-200 divide-y divide-slate-800">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <footer class="w-full border-t border-white/10 bg-slate-950/90 backdrop-blur-md py-8 z-10 text-xs text-slate-400">
+        <div class="max-w-7xl mx-auto px-6 space-y-1.5">
+            <p class="font-bold text-slate-200">상호: 컴퓨터수리 | 대표자: 유찬솔</p>
+            <p>사업자등록번호: 492-03-03435 | 업태: 협회 및 단체, 수리 및 기타 개인서비스 | 종목: 컴퓨터 및 주변 기기 수리업</p>
+            <p>소재지: 경기도 부천시 소사구 부광로42번길 11, 303호 (괴안동, 삼성홈맨션)</p>
+            <p class="pt-2 text-slate-500">© Computer Repair. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <div id="loginModal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-50">
+        <div class="glass-box rounded-2xl p-8 max-w-sm w-full text-white shadow-2xl relative space-y-4 border border-white/20">
+            <h3 class="text-xl font-bold text-center">관리자 로그인</h3>
+            <form onsubmit="handleLogin(event)" class="space-y-3">
+                <div>
+                    <label class="block text-xs font-bold text-slate-300 mb-1">아이디</label>
+                    <input type="text" id="adminId" required class="w-full px-3 py-2 bg-slate-950/60 border border-slate-700 rounded-lg text-sm text-white">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-300 mb-1">비밀번호</label>
+                    <input type="password" id="adminPw" required class="w-full px-3 py-2 bg-slate-950/60 border border-slate-700 rounded-lg text-sm text-white">
+                    <p class="text-[10px] text-cyan-400 mt-1">데모 ID: admin / PW: 1234</p>
+                </div>
+                <button type="submit" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2.5 rounded-lg text-sm cursor-pointer">로그인</button>
+                <button type="button" onclick="closeLoginModal()" class="w-full text-slate-400 text-xs mt-1 cursor-pointer">취소</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let repairList = JSON.parse(localStorage.getItem('computerRepairData070')) || [];
+
+        async function handleFormSubmit(event) {
+            event.preventDefault();
+            const name = document.getElementById('custName').value;
+            const phone = document.getElementById('custPhone').value;
+            const title = document.getElementById('custTitle').value;
+            const details = document.getElementById('custDetails').value;
+
+            const now = new Date();
+            const dateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+
+            const SERVICE_ID = 'service_b0c37up';
+            const TEMPLATE_ID = 'template_oi9x4zm';
+            const PUBLIC_KEY = 'OE8CKlHlTG3W9_oUz';
+
+            const templateParams = {
+                from_name: name,
+                phone: phone,
+                title: title,
+                details: details || "내용 없음",
+                date: dateStr
+            };
+
+            try {
+                await emailjs.send(SERVICE_ID, TEMPLATE_ID, templateParams, PUBLIC_KEY);
+            } catch (error) {
+                console.error('이메일 전송 중 오류 발생:', error);
+                alert('메일 전송 실패: ' + (error.text || JSON.stringify(error)));
+                return;
+            }
+
+            const newReq = {
+                id: Date.now(),
+                date: dateStr,
+                name,
+                phone,
+                title,
+                details: details || "내용 없음",
+                status: "접수완료"
+            };
+
+            repairList.push(newReq);
+            localStorage.setItem('computerRepairData070', JSON.stringify(repairList));
+
+            alert('성공적으로 접수 및 메일 전송이 완료되었습니다!');
+            document.getElementById('bookingForm').reset();
+
+            if(!document.getElementById('adminView').classList.contains('hidden')) {
+                renderAdminTable();
+            }
+        }
+
+        function openLoginModal() { document.getElementById('loginModal').style.display = 'flex'; }
+        function closeLoginModal() { document.getElementById('loginModal').style.display = 'none'; }
+
+        function handleLogin(event) {
+            event.preventDefault();
+            const id = document.getElementById('adminId').value;
+            const pw = document.getElementById('adminPw').value;
+
+            if (id === 'admin' && pw === '1234') {
+                closeLoginModal();
+                showAdminView();
+                document.getElementById('adminId').value = '';
+                document.getElementById('adminPw').value = '';
+            } else {
+                alert('비밀번호가 일치하지 않습니다.');
+            }
+        }
+
+        function showAdminView() {
+            document.getElementById('mainView').classList.add('hidden');
+            document.getElementById('adminView').classList.remove('hidden');
+            renderAdminTable();
+        }
+
+        function goHome() {
+            document.getElementById('adminView').classList.add('hidden');
+            document.getElementById('mainView').classList.remove('hidden');
+        }
+
+        function renderAdminTable() {
+            const tbody = document.getElementById('adminTableBody');
+            tbody.innerHTML = '';
+
+            if (repairList.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-slate-400">접수된 내역이 없습니다.</td></tr>';
+                return;
+            }
+
+            [...repairList].reverse().forEach((req, index) => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-800/50 transition border-b border-slate-800";
+                tr.innerHTML = `
+                    <td class="p-3 text-slate-400">${repairList.length - index}</td>
+                    <td class="p-3 text-slate-400">${req.date}</td>
+                    <td class="p-3 font-bold text-white">${req.name}</td>
+                    <td class="p-3 text-cyan-400 font-semibold">${req.phone}</td>
+                    <td class="p-3 font-semibold text-slate-100">${req.title}</td>
+                    <td class="p-3 text-slate-400 truncate max-w-xs">${req.details}</td>
+                    <td class="p-3"><span class="bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-2 py-0.5 rounded font-bold">${req.status}</span></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function clearStorage() {
+            if(confirm('접수 내역을 모두 삭제하시겠습니까?')) {
+                localStorage.removeItem('computerRepairData070');
+                repairList = [];
+                renderAdminTable();
+            }
+        }
+    </script>
+
+    <script>
+        const reviewData = [
+    {
+        "initial": "김",
+        "name": "김OO님",
+        "rating": 5,
+        "photo": "images/review_photo_ba.jpg",
+        "text": "블루스크린이 계속 떠서 홧병날 뻔 했는데 후기 제일 좋은 사장님께 연락드렸더니 빠르게 답주시고 하루만에 출장까지 와주셨어요!!",
+        "reply": "소중한 후기 남겨주셔서 감사합니다! 앞으로도 항상 정직하고 친절한 수리로 보답하겠습니다 :)"
+    },
+    {
+        "initial": "박",
+        "name": "박OO님",
+        "rating": 5,
+        "photo": "images/review_photo_geu.jpg",
+        "text": "본체가 안켜져서 당근에서 우연히 알게됐는데 구석구석 꼼꼼하게 체크, 청소도 비용 안받고 해주셨어요. 거품비용 없고 최고입니다!",
+        "reply": "후기 감사합니다 고객님! 고객만족을 최우선으로 생각하는 수리업체가 되겠습니다."
+    },
+    {
+        "initial": "이",
+        "name": "이OO님",
+        "rating": 5,
+        "photo": "images/review_photo_ssa.jpg",
+        "text": "금요일 오후에 말씀드렸는데 픽업 수리 후 다음날 오전에 가져다주셨어요. 빠르고 저렴하고 친절합니다.",
+        "reply": "따뜻한 후기 감사드려요! 다음에도 믿고 맡기실 수 있도록 최선을 다하겠습니다."
+    },
+    {
+        "initial": "최",
+        "name": "최OO님",
+        "rating": 5,
+        "photo": "images/review_photo_l.jpg",
+        "text": "급여이체날 화면에 마우스만 보이는 상황에서 빠른 방문 후 바로 해결해주셔서 감사드립니다.",
+        "reply": "소중한 후기 남겨주셔서 감사합니다! 앞으로도 항상 정직하고 친절한 수리로 보답하겠습니다 :)"
+    },
+    {
+        "initial": "정",
+        "name": "정OO님",
+        "rating": 5,
+        "photo": "images/review_photo_da.jpg",
+        "text": "오랫동안 안쓰던 데스크탑, 저렴한 가격에 청소와 문제처리까지 꼼꼼하게 확인해 주시네요.",
+        "reply": "후기 감사합니다 고객님! 고객만족을 최우선으로 생각하는 수리업체가 되겠습니다."
+    },
+    {
+        "initial": "한",
+        "name": "한OO님",
+        "rating": 5,
+        "photo": "images/review_photo_ri.jpg",
+        "text": "갑자기 컴퓨터가 먹통이 되어 방문 서비스로 윈도우 포맷 진행, 예약시간에 정확히 방문하시고 친절하게 설명해주셨습니다.",
+        "reply": "따뜻한 후기 감사드려요! 다음에도 믿고 맡기실 수 있도록 최선을 다하겠습니다."
+    },
+    {
+        "initial": "강",
+        "name": "강OO님",
+        "rating": 5,
+        "photo": "images/review_photo_n.jpg",
+        "text": "본체가 고장나서 수리를 맡겼는데 어떤게 문제인지 친절하게 설명해주시고 금액도 저렴하게 해주셔서 너무 좋습니다!!",
+        "reply": "소중한 후기 남겨주셔서 감사합니다! 앞으로도 항상 정직하고 친절한 수리로 보답하겠습니다 :)"
+    },
+    {
+        "initial": "조",
+        "name": "조OO님",
+        "rating": 5,
+        "photo": "images/review_photo_so.jpg",
+        "text": "배그하다 갑자기 부팅이 안돼서 문의드렸는데 직접 오셔서 고쳐주셨어요. 엄청 빨리 와주시고 수리비도 적당했어요.",
+        "reply": "후기 감사합니다 고객님! 고객만족을 최우선으로 생각하는 수리업체가 되겠습니다."
+    },
+    {
+        "initial": "윤",
+        "name": "윤OO님",
+        "rating": 5,
+        "photo": "images/review_photo_ku.jpg",
+        "text": "토요일인데도 연락드리자마자 바로 방문해 주셨어요. 원인을 정확히 짚어서 딱 필요한 부분만 수리해 주셔서 신뢰가 갔습니다.",
+        "reply": "따뜻한 후기 감사드려요! 다음에도 믿고 맡기실 수 있도록 최선을 다하겠습니다."
+    },
+    {
+        "initial": "임",
+        "name": "임OO님",
+        "rating": 5,
+        "photo": "images/review_photo_dol.jpg",
+        "text": "정말 친절하십니다! 딱 수리가 필요한 부분만 캐치해서 설명해주시고 추가로 무언가를 권하지도 않으셔서 믿음이 갑니다.",
+        "reply": "소중한 후기 남겨주셔서 감사합니다! 앞으로도 항상 정직하고 친절한 수리로 보답하겠습니다 :)"
+    },
+    {
+        "initial": "오",
+        "name": "오OO님",
+        "rating": 5,
+        "photo": "images/review_photo_kon.jpg",
+        "text": "문의했더니 답변이 엄청 빠르세요!! 수리는 불가했지만 점검비도 저렴하고 잘 설명해주셨어요.",
+        "reply": "후기 감사합니다 고객님! 고객만족을 최우선으로 생각하는 수리업체가 되겠습니다."
+    },
+    {
+        "initial": "서",
+        "name": "서OO님",
+        "rating": 5,
+        "photo": "images/review_photo_ba2.jpg",
+        "text": "고장난 부품에 대해 잘 설명해주시고 중고 노트북 사는게 더 유리하다고 알려주셨어요. 점검비도 받지 않으셨네요.",
+        "reply": "따뜻한 후기 감사드려요! 다음에도 믿고 맡기실 수 있도록 최선을 다하겠습니다."
+    },
+    {
+        "initial": "신",
+        "name": "신OO님",
+        "rating": 5,
+        "photo": null,
+        "text": "어제 밤에 갑자기 블루스크린 뜨면서 먹통이 됐는데 빠르게 수리완료, 데이터도 살리고 친절하게 설명해주셔서 감사합니다.",
+        "reply": "소중한 후기 남겨주셔서 감사합니다! 앞으로도 항상 정직하고 친절한 수리로 보답하겠습니다 :)"
+    },
+    {
+        "initial": "권",
+        "name": "권OO님",
+        "rating": 5,
+        "photo": null,
+        "text": "친절하게 잘 설명해주고 일처리를 깔끔하게 해주셨어요~ 다음번에도 필요하면 요청 드릴 생각입니다.",
+        "reply": "후기 감사합니다 고객님! 고객만족을 최우선으로 생각하는 수리업체가 되겠습니다."
+    },
+    {
+        "initial": "황",
+        "name": "황OO님",
+        "rating": 5,
+        "photo": null,
+        "text": "신속 친절 정확한 일처리 최고입니다.",
+        "reply": "따뜻한 후기 감사드려요! 다음에도 믿고 맡기실 수 있도록 최선을 다하겠습니다."
+    },
+    {
+        "initial": "안",
+        "name": "안OO님",
+        "rating": 5,
+        "photo": null,
+        "text": "급하게 컴퓨터 써야되는데 안돼서 고생했는데 빠르게 오셔서 바로 처리해주셨어요. 저렴하게 잘 해주셔서 감사합니다.",
+        "reply": "소중한 후기 남겨주셔서 감사합니다! 앞으로도 항상 정직하고 친절한 수리로 보답하겠습니다 :)"
+    },
+    {
+        "initial": "송",
+        "name": "송OO님",
+        "rating": 5,
+        "photo": null,
+        "text": "빠른 연락 빠른 수리 굿이요.",
+        "reply": "후기 감사합니다 고객님! 고객만족을 최우선으로 생각하는 수리업체가 되겠습니다."
+    },
+    {
+        "initial": "전",
+        "name": "전OO님",
+        "rating": 5,
+        "photo": null,
+        "text": "친절하십니다.",
+        "reply": "따뜻한 후기 감사드려요! 다음에도 믿고 맡기실 수 있도록 최선을 다하겠습니다."
+    },
+    {
+        "initial": "홍",
+        "name": "홍OO님",
+        "rating": 5,
+        "photo": null,
+        "text": "셀프 부품교체 후 전원이 안들어와 방문했는데 꼼꼼하게 봐주시고 부품도 최저가로 알아봐주셨어요!!",
+        "reply": "소중한 후기 남겨주셔서 감사합니다! 앞으로도 항상 정직하고 친절한 수리로 보답하겠습니다 :)"
+    },
+    {
+        "initial": "유",
+        "name": "유OO님",
+        "rating": 5,
+        "photo": null,
+        "text": "당일에 문의드렸는데 금방 오셔서 합리적인 가격에 윈도우와 프로그램 설치해주셨어요!",
+        "reply": "후기 감사합니다 고객님! 고객만족을 최우선으로 생각하는 수리업체가 되겠습니다."
+    },
+    {
+        "initial": "남",
+        "name": "남OO님",
+        "rating": 5,
+        "photo": null,
+        "text": "토요일 갑자기 부팅이 안돼서 연락드렸는데 빨리 오셔서 다음날 점심쯤 수리 끝내주셨고 부품비도 싸게 해주셨어요.",
+        "reply": "따뜻한 후기 감사드려요! 다음에도 믿고 맡기실 수 있도록 최선을 다하겠습니다."
+    },
+    {
+        "initial": "노",
+        "name": "노OO님",
+        "rating": 4.5,
+        "photo": null,
+        "text": "디테일하게 고장부분 확인해주시고 고장난 부분만 딱딱 고쳐주십니다!",
+        "reply": "소중한 후기 남겨주셔서 감사합니다! 앞으로도 항상 정직하고 친절한 수리로 보답하겠습니다 :)"
+    },
+    {
+        "initial": "방",
+        "name": "방OO님",
+        "rating": 5,
+        "photo": null,
+        "text": "다른 업체에서 바가지 쓸 뻔 한 걸 구제해주셨어요. 설명도 친절하고 가격도 합리적인데다 빠르기까지!!",
+        "reply": "후기 감사합니다 고객님! 고객만족을 최우선으로 생각하는 수리업체가 되겠습니다."
+    }
+];
+        let reviewIdx = 0;
+        function starHtml(rating) {
+            const full = Math.floor(rating);
+            const half = (rating - full) >= 0.5 ? 1 : 0;
+            const empty = 5 - full - half;
+            let s = '<i class="fa-solid fa-star"></i>'.repeat(full);
+            s += '<i class="fa-solid fa-star-half-stroke"></i>'.repeat(half);
+            s += '<i class="fa-regular fa-star"></i>'.repeat(empty);
+            return s;
+        }
+        function renderReview() {
+            const content = document.getElementById('reviewContent');
+            if (!content) return;
+            content.style.opacity = 0;
+            setTimeout(() => {
+                const r = reviewData[reviewIdx];
+                document.getElementById('reviewAvatar').textContent = r.initial;
+                document.getElementById('reviewName').textContent = r.name;
+                document.getElementById('reviewStars').innerHTML = starHtml(r.rating);
+                document.getElementById('reviewText').textContent = r.text;
+                document.getElementById('reviewReply').textContent = r.reply;
+                document.getElementById('reviewPhotoBadge').classList.toggle('hidden', !r.photo);
+                const photoEl = document.getElementById('reviewPhoto');
+                if (r.photo) {
+                    photoEl.src = r.photo;
+                    photoEl.classList.remove('hidden');
+                } else {
+                    photoEl.classList.add('hidden');
+                    photoEl.src = '';
+                }
+                content.style.opacity = 1;
+                reviewIdx = (reviewIdx + 1) % reviewData.length;
+            }, 350);
+        }
+        function resetReviewProgress() {
+            const bar = document.getElementById('reviewProgress');
+            if (!bar) return;
+            bar.style.transition = 'none';
+            bar.style.width = '0%';
+            requestAnimationFrame(() => {
+                bar.style.transition = 'width 4s linear';
+                bar.style.width = '100%';
+            });
+        }
+        renderReview();
+        resetReviewProgress();
+        setInterval(() => { renderReview(); resetReviewProgress(); }, 4000);
+    </script>
+    <script src="/tracker.js"></script>
+</body>
+</html>

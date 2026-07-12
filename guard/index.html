@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>파워링크 부정클릭 탐지 대시보드</title>
+<style>
+  :root {
+    --bg: #0f1420;
+    --card: #171e2e;
+    --card-border: #262f45;
+    --text: #e8ecf5;
+    --muted: #8b93a7;
+    --accent: #4d8dff;
+    --danger: #ff5d5d;
+    --danger-bg: #3a1f24;
+    --ok: #3ddc97;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+
+  .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 28px; }
+  .stat-card {
+    background: var(--card); border: 1px solid var(--card-border);
+    border-radius: 10px; padding: 16px;
+  }
+  .stat-card .label { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+  .stat-card .value { font-size: 24px; font-weight: 700; }
+  .stat-card.warn .value { color: var(--danger); }
+
+  .panel {
+    background: var(--card); border: 1px solid var(--card-border);
+    border-radius: 10px; padding: 18px; margin-bottom: 20px;
+  }
+  .panel-header {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;
+  }
+  .panel-header h2 { font-size: 15px; margin: 0; }
+  .actions button, .actions a {
+    background: var(--accent); color: white; border: none; border-radius: 6px;
+    padding: 7px 12px; font-size: 12px; cursor: pointer; text-decoration: none;
+    margin-left: 6px; display: inline-block;
+  }
+  .actions button.secondary { background: #2a3348; }
+  .actions button.danger { background: var(--danger); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--card-border); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  tr:hover td { background: #1c2438; }
+  .tag {
+    display: inline-block; background: var(--danger-bg); color: var(--danger);
+    border-radius: 4px; padding: 2px 6px; font-size: 11px; margin-right: 4px;
+  }
+  .muted { color: var(--muted); }
+  .empty { text-align: center; color: var(--muted); padding: 30px 0; }
+  code { background: #1c2438; padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<h1>🚫 파워링크 부정클릭 탐지 대시보드</h1>
+<div class="sub">랜딩페이지 클릭 로그를 기반으로 의심 IP를 자동 탐지합니다. 새로고침: <button id="refreshBtn" style="background:none;border:1px solid var(--card-border);color:var(--text);border-radius:6px;padding:4px 10px;cursor:pointer;">지금 갱신</button></div>
+
+<div class="stats" id="stats">
+  <div class="stat-card"><div class="label">오늘 클릭</div><div class="value" id="stat-today">-</div></div>
+  <div class="stat-card"><div class="label">전체 클릭</div><div class="value" id="stat-total">-</div></div>
+  <div class="stat-card"><div class="label">고유 방문 IP</div><div class="value" id="stat-unique">-</div></div>
+  <div class="stat-card warn"><div class="label">의심 IP 수</div><div class="value" id="stat-susp-ip">-</div></div>
+  <div class="stat-card warn"><div class="label">의심 클릭 수</div><div class="value" id="stat-susp-click">-</div></div>
+</div>
+
+<div class="panel">
+  <div class="panel-header">
+    <h2>⚠️ 의심 IP 목록</h2>
+    <div class="actions">
+      <button class="secondary" id="copySelectedBtn">선택 IP 복사</button>
+      <button class="secondary" id="copyAllBtn">전체 IP 복사</button>
+      <a href="/api/export/suspicious-ips.csv">CSV 다운로드</a>
+    </div>
+  </div>
+  <div class="muted" style="font-size:12px;margin-bottom:10px;">
+    복사한 IP는 네이버 광고관리시스템 &gt; 도구 &gt; <b>광고노출제한 관리</b>에 붙여넣어 차단하세요.
+  </div>
+  <table>
+    <thead>
+      <tr><th style="width:24px;"></th><th>IP</th><th>클릭수</th><th>탐지 사유</th><th>최초</th><th>최근</th><th>차단상태</th></tr>
+    </thead>
+    <tbody id="suspicious-body"><tr><td colspan="7" class="empty">불러오는 중...</td></tr></tbody>
+  </table>
+</div>
+
+<div class="panel">
+  <div class="panel-header">
+    <h2>최근 클릭 로그</h2>
+    <div class="actions">
+      <a href="/api/export/clicks.csv">CSV 다운로드</a>
+    </div>
+  </div>
+  <table>
+    <thead>
+      <tr><th>시간</th><th>IP</th><th>키워드</th><th>Referrer</th><th>상태</th></tr>
+    </thead>
+    <tbody id="clicks-body"><tr><td colspan="5" class="empty">불러오는 중...</td></tr></tbody>
+  </table>
+</div>
+
+<div class="sub" style="margin-top:8px;">
+  설치: 랜딩페이지에 <code>&lt;script src="/tracker.js" data-api="이_서버주소"&gt;&lt;/script&gt;</code> 삽입
+</div>
+
+<script>
+async function fetchJSON(url) {
+  const res = await fetch(url);
+  return res.json();
+}
+
+function esc(s) {
+  return (s ?? "").toString().replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+}
+
+async function loadStats() {
+  const s = await fetchJSON("/api/stats");
+  document.getElementById("stat-today").textContent = s.today_clicks;
+  document.getElementById("stat-total").textContent = s.total_clicks;
+  document.getElementById("stat-unique").textContent = s.unique_ips;
+  document.getElementById("stat-susp-ip").textContent = s.suspicious_ips;
+  document.getElementById("stat-susp-click").textContent = s.suspicious_clicks;
+}
+
+async function loadSuspiciousIps() {
+  const rows = await fetchJSON("/api/suspicious-ips");
+  const body = document.getElementById("suspicious-body");
+  if (rows.length === 0) {
+    body.innerHTML = '<tr><td colspan="7" class="empty">아직 의심 IP가 없습니다.</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.map(r => `
+    <tr>
+      <td><input type="checkbox" class="ip-check" value="${esc(r.ip)}"></td>
+      <td>${esc(r.ip)}</td>
+      <td>${r.click_count}</td>
+      <td>${r.reasons.split(", ").filter(Boolean).map(x => `<span class="tag">${esc(x)}</span>`).join("")}</td>
+      <td class="muted">${esc(r.first_seen)}</td>
+      <td class="muted">${esc(r.last_seen)}</td>
+      <td>${r.blocked ? "✅ 차단완료" : `<button class="secondary" style="padding:3px 8px;font-size:11px;" onclick="markBlocked('${esc(r.ip)}')">차단완료 표시</button>`}</td>
+    </tr>
+  `).join("");
+}
+
+async function loadClicks() {
+  const rows = await fetchJSON("/api/clicks?limit=50");
+  const body = document.getElementById("clicks-body");
+  if (rows.length === 0) {
+    body.innerHTML = '<tr><td colspan="5" class="empty">아직 클릭 데이터가 없습니다.</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.map(r => `
+    <tr>
+      <td class="muted">${esc(r.created_at)}</td>
+      <td>${esc(r.ip)}</td>
+      <td>${esc(r.keyword)}</td>
+      <td class="muted">${esc(r.referrer).slice(0,40)}</td>
+      <td>${r.is_suspicious ? '<span class="tag">의심</span>' : '<span class="muted">정상</span>'}</td>
+    </tr>
+  `).join("");
+}
+
+async function markBlocked(ip) {
+  await fetch(`/api/suspicious-ips/${encodeURIComponent(ip)}/block`, { method: "POST" });
+  loadSuspiciousIps();
+}
+
+function copyToClipboard(text) {
+  navigator.clipboard.writeText(text).then(() => alert("복사되었습니다:\n" + text));
+}
+
+document.getElementById("copySelectedBtn").addEventListener("click", () => {
+  const ips = Array.from(document.querySelectorAll(".ip-check:checked")).map(el => el.value);
+  if (ips.length === 0) { alert("선택된 IP가 없습니다."); return; }
+  copyToClipboard(ips.join(","));
+});
+
+document.getElementById("copyAllBtn").addEventListener("click", () => {
+  const ips = Array.from(document.querySelectorAll(".ip-check")).map(el => el.value);
+  if (ips.length === 0) { alert("의심 IP가 없습니다."); return; }
+  copyToClipboard(ips.join(","));
+});
+
+document.getElementById("refreshBtn").addEventListener("click", refreshAll);
+
+function refreshAll() {
+  loadStats();
+  loadSuspiciousIps();
+  loadClicks();
+}
+
+refreshAll();
+setInterval(refreshAll, 30000);
+</script>
+
+</body>
+</html>
