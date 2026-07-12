@@ -1,38 +1,197 @@
 """
 네이버 파워링크 부정클릭 탐지 백엔드 (FastAPI, Vercel Functions 버전)
-
-주요 기능
-- POST /api/click        : 랜딩페이지 tracker.js 가 클릭 이벤트를 전송하는 엔드포인트
-- GET  /api/stats         : 대시보드 상단 요약 통계
-- GET  /api/clicks        : 최근 클릭 로그 목록
-- GET  /api/suspicious-ips: 의심 IP 목록 (사유/횟수 포함)
-- POST /api/suspicious-ips/{ip}/block : 차단 처리(수동 등록 완료) 표시
-- GET  /api/export/suspicious-ips.csv : 의심 IP CSV 다운로드
-- GET  /api/export/clicks.csv         : 클릭 로그 CSV 다운로드
-- GET  /api/check                    : 이 방문자(IP)가 의심 상태인지 + 최근 방문 이력 반환
-                                        (랜딩페이지에 경고 배너 띄울 때 사용)
-
-로컬 실행: cd api && uvicorn index:app --reload
-Vercel에서는 vercel.json의 rewrites 설정으로 /api/* 요청이 전부 이 파일로 들어온다.
+- 파일 하나로 통합 (database.py / detection.py 내용을 이 파일 안에 합침).
+  Vercel이 api/ 폴더 안의 여러 .py 파일 때문에 엔트리포인트를 못 찾는
+  문제를 피하기 위한 조치.
 """
 import csv
 import io
 import os
-import sys
-from datetime import datetime, timezone
-
-# Vercel의 Python 런타임은 이 파일을 importlib로 직접 로드하기 때문에,
-# 같은 폴더(api/)가 sys.path에 자동으로 잡히지 않아 "import database"가
-# ModuleNotFoundError를 일으킨다. 아래 한 줄로 이 파일이 있는 폴더를
-# sys.path에 명시적으로 추가해서 해결한다.
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from supabase import create_client, Client
 
-import database
-import detection
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
+
+_client: Optional[Client] = None
+
+
+def get_client() -> Client:
+    global _client
+    if _client is None:
+        if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+            raise RuntimeError(
+                "SUPABASE_URL / SUPABASE_SERVICE_KEY 환경변수가 설정되지 않았습니다."
+            )
+        _client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    return _client
+
+
+def db_insert_click(row: dict):
+    get_client().table("clicks").insert(row).execute()
+
+
+def db_count_clicks_since(ip: str, since_iso: str) -> int:
+    resp = (
+        get_client()
+        .table("clicks")
+        .select("id", count="exact")
+        .eq("ip", ip)
+        .gte("created_at", since_iso)
+        .execute()
+    )
+    return resp.count or 0
+
+
+def db_get_last_click(ip: str):
+    resp = (
+        get_client()
+        .table("clicks")
+        .select("created_at")
+        .eq("ip", ip)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return resp.data[0] if resp.data else None
+
+
+def db_get_suspicious_ip(ip: str):
+    resp = get_client().table("suspicious_ips").select("*").eq("ip", ip).limit(1).execute()
+    return resp.data[0] if resp.data else None
+
+
+def db_upsert_suspicious_ip(ip: str, reasons: list, now_iso: str):
+    existing = db_get_suspicious_ip(ip)
+    reason_str = ", ".join(sorted(set(reasons)))
+
+    if existing is None:
+        get_client().table("suspicious_ips").insert({
+            "ip": ip,
+            "click_count": 1,
+            "reasons": reason_str,
+            "first_seen": now_iso,
+            "last_seen": now_iso,
+            "blocked": False,
+        }).execute()
+    else:
+        merged_reasons = set(existing["reasons"].split(", ")) | set(reasons)
+        get_client().table("suspicious_ips").update({
+            "click_count": existing["click_count"] + 1,
+            "reasons": ", ".join(sorted(merged_reasons)),
+            "last_seen": now_iso,
+        }).eq("ip", ip).execute()
+
+
+def db_list_clicks_by_ip(ip: str, limit: int = 10):
+    resp = (
+        get_client()
+        .table("clicks")
+        .select("ip, keyword, created_at")
+        .eq("ip", ip)
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    return resp.data or []
+
+
+def db_get_stats() -> dict:
+    client = get_client()
+    today_start = datetime.utcnow().strftime("%Y-%m-%dT00:00:00")
+
+    total = client.table("clicks").select("id", count="exact").execute().count or 0
+    today_count = (
+        client.table("clicks").select("id", count="exact").gte("created_at", today_start).execute().count or 0
+    )
+    suspicious_clicks = (
+        client.table("clicks").select("id", count="exact").eq("is_suspicious", True).execute().count or 0
+    )
+    suspicious_ips = client.table("suspicious_ips").select("ip", count="exact").execute().count or 0
+
+    all_ips = client.table("clicks").select("ip").execute().data or []
+    unique_ip = len({r["ip"] for r in all_ips})
+
+    return {
+        "total_clicks": total,
+        "today_clicks": today_count,
+        "unique_ips": unique_ip,
+        "suspicious_ips": suspicious_ips,
+        "suspicious_clicks": suspicious_clicks,
+    }
+
+
+def db_list_clicks(limit: int = 100, suspicious_only: bool = False):
+    q = get_client().table("clicks").select("*").order("created_at", desc=True).limit(limit)
+    if suspicious_only:
+        q = q.eq("is_suspicious", True)
+    return q.execute().data or []
+
+
+def db_list_suspicious_ips():
+    resp = (
+        get_client()
+        .table("suspicious_ips")
+        .select("*")
+        .order("click_count", desc=True)
+        .order("last_seen", desc=True)
+        .execute()
+    )
+    return resp.data or []
+
+
+def db_mark_blocked(ip: str):
+    get_client().table("suspicious_ips").update({"blocked": True}).eq("ip", ip).execute()
+
+
+SHORT_WINDOW_MINUTES = 5
+SHORT_WINDOW_MAX_CLICKS = 3
+DAILY_MAX_CLICKS = 10
+RAPID_RECLICK_SECONDS = 3
+
+BOT_UA_KEYWORDS = [
+    "bot", "crawler", "spider", "headless", "phantomjs",
+    "curl", "wget", "python-requests", "scrapy", "puppeteer",
+]
+
+
+def check_click(ip: str, user_agent: str, created_at: datetime):
+    reasons = []
+
+    window_start = (created_at - timedelta(minutes=SHORT_WINDOW_MINUTES)).isoformat()
+    short_count = db_count_clicks_since(ip, window_start)
+    if short_count + 1 >= SHORT_WINDOW_MAX_CLICKS:
+        reasons.append(f"{SHORT_WINDOW_MINUTES}분 내 {short_count + 1}회 클릭")
+
+    day_start = created_at.strftime("%Y-%m-%dT00:00:00")
+    day_count = db_count_clicks_since(ip, day_start)
+    if day_count + 1 >= DAILY_MAX_CLICKS:
+        reasons.append(f"당일 {day_count + 1}회 클릭 (일일 기준 {DAILY_MAX_CLICKS}회 초과)")
+
+    last = db_get_last_click(ip)
+    if last is not None:
+        try:
+            last_time_str = last["created_at"].replace("Z", "+00:00")
+            last_time = datetime.fromisoformat(last_time_str)
+            compare_now = created_at
+            if last_time.tzinfo is not None and compare_now.tzinfo is None:
+                compare_now = compare_now.replace(tzinfo=last_time.tzinfo)
+            if (compare_now - last_time).total_seconds() <= RAPID_RECLICK_SECONDS:
+                reasons.append(f"{RAPID_RECLICK_SECONDS}초 이내 재클릭")
+        except (ValueError, KeyError):
+            pass
+
+    ua_lower = (user_agent or "").lower()
+    if any(kw in ua_lower for kw in BOT_UA_KEYWORDS) or not ua_lower:
+        reasons.append("봇/비정상 User-Agent")
+
+    return (len(reasons) > 0, reasons)
+
 
 app = FastAPI(title="Naver Click Guard")
 
@@ -70,9 +229,9 @@ async def record_click(request: Request):
     now = datetime.now(timezone.utc)
     now_iso = now.isoformat()
 
-    is_suspicious, reasons = detection.check_click(ip, user_agent, now)
+    is_suspicious, reasons = check_click(ip, user_agent, now)
 
-    database.insert_click({
+    db_insert_click({
         "ip": ip,
         "user_agent": user_agent,
         "referrer": referrer,
@@ -87,19 +246,17 @@ async def record_click(request: Request):
 
     history = []
     if is_suspicious:
-        database.upsert_suspicious_ip(ip, reasons, now_iso)
-        history = database.list_clicks_by_ip(ip, limit=10)
+        db_upsert_suspicious_ip(ip, reasons, now_iso)
+        history = db_list_clicks_by_ip(ip, limit=10)
 
     return {"ok": True, "suspicious": is_suspicious, "reasons": reasons, "history": history}
 
 
 @app.get("/api/check")
 def check_visitor(request: Request):
-    """현재 요청자의 IP가 의심 IP 목록에 있는지 + 최근 방문 이력 반환.
-    랜딩페이지에서 경고 배너를 띄울지 판단할 때 호출한다."""
     ip = _client_ip(request)
-    info = database.get_suspicious_ip(ip)
-    history = database.list_clicks_by_ip(ip, limit=10)
+    info = db_get_suspicious_ip(ip)
+    history = db_list_clicks_by_ip(ip, limit=10)
     return {
         "ip": ip,
         "flagged": info is not None,
@@ -111,28 +268,28 @@ def check_visitor(request: Request):
 
 @app.get("/api/stats")
 def get_stats():
-    return database.get_stats()
+    return db_get_stats()
 
 
 @app.get("/api/clicks")
 def list_clicks(limit: int = 100, suspicious_only: bool = False):
-    return database.list_clicks(limit=limit, suspicious_only=suspicious_only)
+    return db_list_clicks(limit=limit, suspicious_only=suspicious_only)
 
 
 @app.get("/api/suspicious-ips")
 def list_suspicious_ips():
-    return database.list_suspicious_ips()
+    return db_list_suspicious_ips()
 
 
 @app.post("/api/suspicious-ips/{ip}/block")
 def mark_blocked(ip: str):
-    database.mark_blocked(ip)
+    db_mark_blocked(ip)
     return {"ok": True}
 
 
 @app.get("/api/export/suspicious-ips.csv")
 def export_suspicious_csv():
-    rows = database.list_suspicious_ips()
+    rows = db_list_suspicious_ips()
 
     buf = io.StringIO()
     writer = csv.writer(buf)
@@ -150,11 +307,20 @@ def export_suspicious_csv():
 
 @app.get("/api/export/clicks.csv")
 def export_clicks_csv(suspicious_only: bool = False):
-    rows = database.list_clicks(limit=10000, suspicious_only=suspicious_only)
+    rows = db_list_clicks(limit=10000, suspicious_only=suspicious_only)
 
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow(["id", "ip", "user_agent", "referrer", "landing_url", "keyword",
                       "click_id", "session_id", "created_at", "is_suspicious", "reasons"])
     for r in rows:
-        writer.writerow([r.get("id"), r.get("ip"), r.ge
+        writer.writerow([r.get("id"), r.get("ip"), r.get("user_agent"), r.get("referrer"), r.get("landing_url"),
+                          r.get("keyword"), r.get("click_id"), r.get("session_id"), r.get("created_at"),
+                          r.get("is_suspicious"), r.get("reasons")])
+    buf.seek(0)
+
+    return StreamingResponse(
+        buf,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=clicks.csv"},
+    )
