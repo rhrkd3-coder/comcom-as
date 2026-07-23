@@ -3,6 +3,11 @@
 - 파일 하나로 통합 (database.py / detection.py 내용을 이 파일 안에 합침).
   Vercel이 api/ 폴더 안의 여러 .py 파일 때문에 엔트리포인트를 못 찾는
   문제를 피하기 위한 조치.
+
+[수정사항] 차단완료 표시한 IP는 기본 목록에서 자동으로 빠지도록 변경.
+  - db_list_suspicious_ips(include_blocked=False)  : 기본은 미차단만 반환
+  - GET /api/suspicious-ips?include_blocked=true   : 차단완료 이력도 같이 조회
+  - POST /api/suspicious-ips/{ip}/unblock          : 차단완료 취소(되돌리기)
 """
 import csv
 import io
@@ -112,7 +117,10 @@ def db_get_stats() -> dict:
     suspicious_clicks = (
         client.table("clicks").select("id", count="exact").eq("is_suspicious", True).execute().count or 0
     )
-    suspicious_ips = client.table("suspicious_ips").select("ip", count="exact").execute().count or 0
+    # [수정] 차단완료(blocked=True) 처리한 IP는 "의심 IP 수"에서 제외 - 대시보드 목록과 숫자를 맞춤
+    suspicious_ips = (
+        client.table("suspicious_ips").select("ip", count="exact").eq("blocked", False).execute().count or 0
+    )
 
     all_ips = client.table("clicks").select("ip").execute().data or []
     unique_ip = len({r["ip"] for r in all_ips})
@@ -133,20 +141,26 @@ def db_list_clicks(limit: int = 100, suspicious_only: bool = False):
     return q.execute().data or []
 
 
-def db_list_suspicious_ips():
-    resp = (
-        get_client()
-        .table("suspicious_ips")
-        .select("*")
-        .order("click_count", desc=True)
-        .order("last_seen", desc=True)
-        .execute()
-    )
+def db_list_suspicious_ips(include_blocked: bool = False):
+    """
+    [수정] 기본값(include_blocked=False)은 아직 차단 처리 안 한 IP만 반환한다.
+    '차단완료 표시'를 누른 IP는 자동으로 빠져서 화면이 계속 깔끔하게 유지된다.
+    이력을 보고 싶을 때만 include_blocked=True 로 호출.
+    """
+    q = get_client().table("suspicious_ips").select("*")
+    if not include_blocked:
+        q = q.eq("blocked", False)
+    resp = q.order("click_count", desc=True).order("last_seen", desc=True).execute()
     return resp.data or []
 
 
 def db_mark_blocked(ip: str):
     get_client().table("suspicious_ips").update({"blocked": True}).eq("ip", ip).execute()
+
+
+def db_mark_unblocked(ip: str):
+    """[신규] 차단완료 이력에서 실수로 표시한 IP를 다시 활성 목록으로 되돌린다."""
+    get_client().table("suspicious_ips").update({"blocked": False}).eq("ip", ip).execute()
 
 
 SHORT_WINDOW_MINUTES = 5
@@ -277,8 +291,8 @@ def list_clicks(limit: int = 100, suspicious_only: bool = False):
 
 
 @app.get("/api/suspicious-ips")
-def list_suspicious_ips():
-    return db_list_suspicious_ips()
+def list_suspicious_ips(include_blocked: bool = False):
+    return db_list_suspicious_ips(include_blocked=include_blocked)
 
 
 @app.post("/api/suspicious-ips/{ip}/block")
@@ -287,9 +301,15 @@ def mark_blocked(ip: str):
     return {"ok": True}
 
 
+@app.post("/api/suspicious-ips/{ip}/unblock")
+def mark_unblocked(ip: str):
+    db_mark_unblocked(ip)
+    return {"ok": True}
+
+
 @app.get("/api/export/suspicious-ips.csv")
 def export_suspicious_csv():
-    rows = db_list_suspicious_ips()
+    rows = db_list_suspicious_ips(include_blocked=True)
 
     buf = io.StringIO()
     writer = csv.writer(buf)
