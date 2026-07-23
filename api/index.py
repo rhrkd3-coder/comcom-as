@@ -14,16 +14,19 @@
   source 컬럼에 저장하고, 부정클릭 탐지 로직은 source='powerlink' 인 클릭에만 적용한다.
   -> Supabase clicks 테이블에 source 컬럼을 먼저 추가해야 함 (supabase_migration_add_source.sql 참고)
 
-[수정사항 3] IP별 접속 지역/통신사(ISP) 조회 추가.
-  ip-api.com 무료 API(분당 45회 제한)를 쓰되, 같은 IP는 ip_geo_cache 테이블에
-  캐싱해두고 재조회하지 않는다 - 그래서 트래픽이 많아도 API 제한에 걸리지 않는다.
-  -> supabase_migration_geo_and_retention.sql 먼저 실행 필요 (컬럼/캐시테이블/10일 자동삭제 예약)
+[수정사항 3] IP별 접속 지역/통신사(ISP) 조회는 제거함.
+  한국 통신사 특성상 IP 지역조회 오차가 커서(등록된 전산센터 위치 vs 실제 접속 위치,
+  실측 50km 이상 차이) 신뢰할 수 없다고 판단. 대신 키워드 자체에 지역명이 포함되어 있어
+  ("양천구컴퓨터수리" 등) 그걸로 지역별 반응을 보는 게 훨씬 정확하다.
+
+[수정사항 4] 며칠에 걸쳐 하루 한두 번씩만 반복 방문하는 패턴 탐지 추가.
+  기존 규칙(5분 내 3회, 하루 10회)은 "몰아서 클릭"만 잡아서, 하루 1번씩 여러 날에
+  걸쳐 클릭하는 저강도 부정클릭은 못 잡았음. 최근 10일(보관 기간과 동일) 중
+  서로 다른 날짜에 DISTINCT_DAY_THRESHOLD 번 이상 방문하면 의심 처리.
 """
 import csv
 import io
-import json
 import os
-import urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -53,51 +56,6 @@ def db_insert_click(row: dict):
     get_client().table("clicks").insert(row).execute()
 
 
-# 알려진 사설/내부 IP는 조회할 필요 없음 (로컬 테스트 등)
-_PRIVATE_IP_PREFIXES = ("10.", "127.", "192.168.", "::1")
-
-
-def get_ip_geo(ip: str) -> dict:
-    """
-    IP의 국가/지역/도시/통신사(ISP)를 조회한다.
-    - 같은 IP는 ip_geo_cache 테이블에 캐싱해서 재조회하지 않는다 (API 제한 방지).
-    - 조회 실패해도 클릭 기록 자체는 막지 않는다 (빈 값으로 진행).
-    """
-    empty = {"country": "", "region": "", "city": "", "isp": ""}
-    if not ip or ip == "unknown" or ip.startswith(_PRIVATE_IP_PREFIXES):
-        return empty
-
-    client = get_client()
-    cached = client.table("ip_geo_cache").select("*").eq("ip", ip).limit(1).execute().data
-    if cached:
-        r = cached[0]
-        return {"country": r.get("country") or "", "region": r.get("region") or "",
-                "city": r.get("city") or "", "isp": r.get("isp") or ""}
-
-    try:
-        url = f"http://ip-api.com/json/{ip}?fields=status,country,regionName,city,isp"
-        with urllib.request.urlopen(url, timeout=3) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        if data.get("status") != "success":
-            return empty
-        geo = {
-            "country": data.get("country") or "",
-            "region": data.get("regionName") or "",
-            "city": data.get("city") or "",
-            "isp": data.get("isp") or "",
-        }
-    except Exception:
-        # 조회 실패(타임아웃/제한 등) - 캐시에 저장하지 않고 다음에 다시 시도할 수 있게 둔다
-        return empty
-
-    try:
-        client.table("ip_geo_cache").upsert({"ip": ip, **geo}).execute()
-    except Exception:
-        pass  # 캐시 저장 실패해도 조회 결과 자체는 반환
-
-    return geo
-
-
 def db_count_clicks_since(ip: str, since_iso: str) -> int:
     resp = (
         get_client()
@@ -108,6 +66,20 @@ def db_count_clicks_since(ip: str, since_iso: str) -> int:
         .execute()
     )
     return resp.count or 0
+
+
+def db_count_distinct_days(ip: str, since_iso: str) -> set:
+    """최근 기간 동안 이 IP가 서로 다른 날짜에 몇 번 방문했는지 (하루에 여러 번 와도 1로 카운트)."""
+    resp = (
+        get_client()
+        .table("clicks")
+        .select("created_at")
+        .eq("ip", ip)
+        .gte("created_at", since_iso)
+        .execute()
+    )
+    dates = {row["created_at"][:10] for row in (resp.data or [])}
+    return dates
 
 
 def db_get_last_click(ip: str):
@@ -128,10 +100,9 @@ def db_get_suspicious_ip(ip: str):
     return resp.data[0] if resp.data else None
 
 
-def db_upsert_suspicious_ip(ip: str, reasons: list, now_iso: str, geo: dict = None):
+def db_upsert_suspicious_ip(ip: str, reasons: list, now_iso: str):
     existing = db_get_suspicious_ip(ip)
     reason_str = ", ".join(sorted(set(reasons)))
-    geo = geo or {}
 
     if existing is None:
         get_client().table("suspicious_ips").insert({
@@ -141,10 +112,6 @@ def db_upsert_suspicious_ip(ip: str, reasons: list, now_iso: str, geo: dict = No
             "first_seen": now_iso,
             "last_seen": now_iso,
             "blocked": False,
-            "geo_country": geo.get("country", ""),
-            "geo_region": geo.get("region", ""),
-            "geo_city": geo.get("city", ""),
-            "geo_isp": geo.get("isp", ""),
         }).execute()
     else:
         merged_reasons = set(existing["reasons"].split(", ")) | set(reasons)
@@ -236,6 +203,8 @@ SHORT_WINDOW_MINUTES = 5
 SHORT_WINDOW_MAX_CLICKS = 3
 DAILY_MAX_CLICKS = 10
 RAPID_RECLICK_SECONDS = 3
+DISTINCT_DAY_WINDOW_DAYS = 10  # 클릭 로그 보관기간(10일)과 맞춤
+DISTINCT_DAY_THRESHOLD = 4     # 이 기간 중 서로 다른 날짜에 4번 이상 오면 의심
 
 BOT_UA_KEYWORDS = [
     "bot", "crawler", "spider", "headless", "phantomjs",
@@ -296,6 +265,14 @@ def check_click(ip: str, user_agent: str, created_at: datetime):
     if any(kw in ua_lower for kw in BOT_UA_KEYWORDS) or not ua_lower:
         reasons.append("봇/비정상 User-Agent")
 
+    # 하루 한두 번씩만 여러 날에 걸쳐 반복 방문하는 "저강도" 패턴 탐지
+    day_window_start = (created_at - timedelta(days=DISTINCT_DAY_WINDOW_DAYS)).isoformat()
+    prior_dates = db_count_distinct_days(ip, day_window_start)
+    today_str = created_at.strftime("%Y-%m-%d")
+    total_distinct_days = len(prior_dates | {today_str})
+    if total_distinct_days >= DISTINCT_DAY_THRESHOLD:
+        reasons.append(f"최근 {DISTINCT_DAY_WINDOW_DAYS}일간 {total_distinct_days}개 날짜에 걸쳐 반복 방문")
+
     return (len(reasons) > 0, reasons)
 
 
@@ -342,9 +319,6 @@ async def record_click(request: Request):
     # source는 판정용이 아니라 대시보드에서 "어디서 들어왔는지" 구분해서 보기 위한 라벨.
     source = classify_source(referrer, landing_url, click_id)
 
-    # IP별 지역/통신사 조회 (캐싱되어 있으면 API 호출 없이 즉시 반환)
-    geo = get_ip_geo(ip)
-
     db_insert_click({
         "ip": ip,
         "user_agent": user_agent,
@@ -357,15 +331,11 @@ async def record_click(request: Request):
         "is_suspicious": is_suspicious,
         "reasons": ", ".join(reasons),
         "source": source,
-        "geo_country": geo.get("country", ""),
-        "geo_region": geo.get("region", ""),
-        "geo_city": geo.get("city", ""),
-        "geo_isp": geo.get("isp", ""),
     })
 
     history = []
     if is_suspicious:
-        db_upsert_suspicious_ip(ip, reasons, now_iso, geo=geo)
+        db_upsert_suspicious_ip(ip, reasons, now_iso)
         history = db_list_clicks_by_ip(ip, limit=10)
 
     return {"ok": True, "suspicious": is_suspicious, "reasons": reasons, "history": history}
@@ -418,11 +388,9 @@ def export_suspicious_csv():
 
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(["ip", "click_count", "reasons", "first_seen", "last_seen", "blocked",
-                      "country", "region", "city", "isp"])
+    writer.writerow(["ip", "click_count", "reasons", "first_seen", "last_seen", "blocked"])
     for r in rows:
-        writer.writerow([r["ip"], r["click_count"], r["reasons"], r["first_seen"], r["last_seen"], r["blocked"],
-                          r.get("geo_country"), r.get("geo_region"), r.get("geo_city"), r.get("geo_isp")])
+        writer.writerow([r["ip"], r["click_count"], r["reasons"], r["first_seen"], r["last_seen"], r["blocked"]])
     buf.seek(0)
 
     return StreamingResponse(
