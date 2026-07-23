@@ -89,6 +89,7 @@
   </div>
   <div class="muted" style="font-size:12px;margin-bottom:10px;">
     복사한 IP는 네이버 광고관리시스템 &gt; 도구 &gt; <b>광고노출제한 관리</b>에 붙여넣어 차단하세요.
+    <span id="toggleBlockedView" style="cursor:pointer;text-decoration:underline;margin-left:10px;">차단완료 이력 보기</span>
   </div>
   <table>
     <thead>
@@ -136,11 +137,13 @@ async function loadStats() {
   document.getElementById("stat-susp-click").textContent = s.suspicious_clicks;
 }
 
+let showBlocked = false;
+
 async function loadSuspiciousIps() {
-  const rows = await fetchJSON("/api/suspicious-ips");
+  const rows = await fetchJSON("/api/suspicious-ips?include_blocked=" + showBlocked);
   const body = document.getElementById("suspicious-body");
   if (rows.length === 0) {
-    body.innerHTML = '<tr><td colspan="7" class="empty">아직 의심 IP가 없습니다.</td></tr>';
+    body.innerHTML = `<tr><td colspan="7" class="empty">${showBlocked ? "차단완료된 IP가 없습니다." : "아직 의심 IP가 없습니다."}</td></tr>`;
     return;
   }
   body.innerHTML = rows.map(r => `
@@ -151,7 +154,7 @@ async function loadSuspiciousIps() {
       <td>${r.reasons.split(", ").filter(Boolean).map(x => `<span class="tag">${esc(x)}</span>`).join("")}</td>
       <td class="muted">${esc(r.first_seen)}</td>
       <td class="muted">${esc(r.last_seen)}</td>
-      <td>${r.blocked ? "✅ 차단완료" : `<button class="secondary" style="padding:3px 8px;font-size:11px;" onclick="markBlocked('${esc(r.ip)}')">차단완료 표시</button>`}</td>
+      <td>${r.blocked ? `✅ 차단완료 <button class="secondary" style="padding:3px 8px;font-size:11px;" onclick="markUnblocked('${esc(r.ip)}')">되돌리기</button>` : `<button class="secondary" style="padding:3px 8px;font-size:11px;" onclick="markBlocked('${esc(r.ip)}')">차단완료 표시</button>`}</td>
     </tr>
   `).join("");
 }
@@ -177,6 +180,13 @@ async function loadClicks() {
 async function markBlocked(ip) {
   await fetch(`/api/suspicious-ips/${encodeURIComponent(ip)}/block`, { method: "POST" });
   loadSuspiciousIps();
+  loadStats();
+}
+
+async function markUnblocked(ip) {
+  await fetch(`/api/suspicious-ips/${encodeURIComponent(ip)}/unblock`, { method: "POST" });
+  loadSuspiciousIps();
+  loadStats();
 }
 
 function copyToClipboard(text) {
@@ -193,6 +203,12 @@ document.getElementById("copyAllBtn").addEventListener("click", () => {
   const ips = Array.from(document.querySelectorAll(".ip-check")).map(el => el.value);
   if (ips.length === 0) { alert("의심 IP가 없습니다."); return; }
   copyToClipboard(ips.join(","));
+});
+
+document.getElementById("toggleBlockedView").addEventListener("click", (e) => {
+  showBlocked = !showBlocked;
+  e.target.textContent = showBlocked ? "활성 목록으로 돌아가기" : "차단완료 이력 보기";
+  loadSuspiciousIps();
 });
 
 document.getElementById("refreshBtn").addEventListener("click", refreshAll);
