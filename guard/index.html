@@ -27,7 +27,7 @@
   h1 { font-size: 20px; margin: 0 0 4px; }
   .sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
 
-  .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 28px; }
+  .stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 28px; }
   .stat-card {
     background: var(--card); border: 1px solid var(--card-border);
     border-radius: 10px; padding: 16px;
@@ -74,6 +74,7 @@
   <div class="stat-card"><div class="label">오늘 클릭</div><div class="value" id="stat-today">-</div></div>
   <div class="stat-card"><div class="label">전체 클릭</div><div class="value" id="stat-total">-</div></div>
   <div class="stat-card"><div class="label">고유 방문 IP</div><div class="value" id="stat-unique">-</div></div>
+  <div class="stat-card"><div class="label">파워링크 클릭(확실)</div><div class="value" id="stat-powerlink">-</div></div>
   <div class="stat-card warn"><div class="label">의심 IP 수</div><div class="value" id="stat-susp-ip">-</div></div>
   <div class="stat-card warn"><div class="label">의심 클릭 수</div><div class="value" id="stat-susp-click">-</div></div>
 </div>
@@ -103,14 +104,24 @@
   <div class="panel-header">
     <h2>최근 클릭 로그</h2>
     <div class="actions">
-      <a href="/api/export/clicks.csv">CSV 다운로드</a>
+      <select id="sourceFilter" style="background:#2a3348;color:var(--text);border:none;border-radius:6px;padding:7px 10px;font-size:12px;">
+        <option value="">전체 유입</option>
+        <option value="powerlink">파워링크만</option>
+        <option value="google_ads">구글광고만</option>
+        <option value="direct">직접방문만</option>
+        <option value="referral">기타 유입만</option>
+      </select>
+      <a href="/api/export/clicks.csv" id="clicksCsvLink">CSV 다운로드</a>
     </div>
+  </div>
+  <div class="muted" style="font-size:12px;margin-bottom:10px;">
+    "파워링크"로 표시된 건만 네이버가 실제로 광고비를 부과한 클릭이라고 100% 확신할 수 있어요 (n_ad/n_keyword_id 파라미터 확인됨). 나머지는 커뮤니티 유입 등 일반 방문입니다.
   </div>
   <table>
     <thead>
-      <tr><th>시간</th><th>IP</th><th>키워드</th><th>Referrer</th><th>상태</th></tr>
+      <tr><th>시간</th><th>IP</th><th>키워드</th><th>유입경로</th><th>Referrer</th><th>상태</th></tr>
     </thead>
-    <tbody id="clicks-body"><tr><td colspan="5" class="empty">불러오는 중...</td></tr></tbody>
+    <tbody id="clicks-body"><tr><td colspan="6" class="empty">불러오는 중...</td></tr></tbody>
   </table>
 </div>
 
@@ -133,8 +144,19 @@ async function loadStats() {
   document.getElementById("stat-today").textContent = s.today_clicks;
   document.getElementById("stat-total").textContent = s.total_clicks;
   document.getElementById("stat-unique").textContent = s.unique_ips;
+  document.getElementById("stat-powerlink").textContent = s.powerlink_clicks ?? "-";
   document.getElementById("stat-susp-ip").textContent = s.suspicious_ips;
   document.getElementById("stat-susp-click").textContent = s.suspicious_clicks;
+}
+
+const SOURCE_LABELS = {
+  powerlink: '<span style="color:#3ddc97;">파워링크</span>',
+  google_ads: '<span style="color:#4d8dff;">구글광고</span>',
+  direct: '<span class="muted">직접방문</span>',
+  referral: '<span class="muted">기타유입</span>',
+};
+function sourceLabel(s) {
+  return SOURCE_LABELS[s] || `<span class="muted">${esc(s || "미분류")}</span>`;
 }
 
 let showBlocked = false;
@@ -160,10 +182,11 @@ async function loadSuspiciousIps() {
 }
 
 async function loadClicks() {
-  const rows = await fetchJSON("/api/clicks?limit=50");
+  const source = document.getElementById("sourceFilter").value;
+  const rows = await fetchJSON("/api/clicks?limit=50" + (source ? "&source=" + encodeURIComponent(source) : ""));
   const body = document.getElementById("clicks-body");
   if (rows.length === 0) {
-    body.innerHTML = '<tr><td colspan="5" class="empty">아직 클릭 데이터가 없습니다.</td></tr>';
+    body.innerHTML = '<tr><td colspan="6" class="empty">아직 클릭 데이터가 없습니다.</td></tr>';
     return;
   }
   body.innerHTML = rows.map(r => `
@@ -171,6 +194,7 @@ async function loadClicks() {
       <td class="muted">${esc(r.created_at)}</td>
       <td>${esc(r.ip)}</td>
       <td>${esc(r.keyword)}</td>
+      <td>${sourceLabel(r.source)}</td>
       <td class="muted">${esc(r.referrer).slice(0,40)}</td>
       <td>${r.is_suspicious ? '<span class="tag">의심</span>' : '<span class="muted">정상</span>'}</td>
     </tr>
@@ -209,6 +233,12 @@ document.getElementById("toggleBlockedView").addEventListener("click", (e) => {
   showBlocked = !showBlocked;
   e.target.textContent = showBlocked ? "활성 목록으로 돌아가기" : "차단완료 이력 보기";
   loadSuspiciousIps();
+});
+
+document.getElementById("sourceFilter").addEventListener("change", (e) => {
+  const source = e.target.value;
+  document.getElementById("clicksCsvLink").href = "/api/export/clicks.csv" + (source ? "?source=" + encodeURIComponent(source) : "");
+  loadClicks();
 });
 
 document.getElementById("refreshBtn").addEventListener("click", refreshAll);
