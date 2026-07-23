@@ -94,9 +94,9 @@
   </div>
   <table>
     <thead>
-      <tr><th style="width:24px;"></th><th>IP</th><th>지역</th><th>클릭수</th><th>탐지 사유</th><th>최초</th><th>최근</th><th>차단상태</th></tr>
+      <tr><th style="width:24px;"></th><th>IP</th><th>클릭수</th><th>탐지 사유</th><th>최초</th><th>최근</th><th>차단상태</th></tr>
     </thead>
-    <tbody id="suspicious-body"><tr><td colspan="8" class="empty">불러오는 중...</td></tr></tbody>
+    <tbody id="suspicious-body"><tr><td colspan="7" class="empty">불러오는 중...</td></tr></tbody>
   </table>
 </div>
 
@@ -119,9 +119,9 @@
   </div>
   <table>
     <thead>
-      <tr><th>시간(KST)</th><th>IP</th><th>지역</th><th>키워드</th><th>유입경로</th><th>Referrer</th><th>상태</th></tr>
+      <tr><th>시간(KST)</th><th>IP</th><th>키워드</th><th>유입경로</th><th>Referrer</th><th>상태</th></tr>
     </thead>
-    <tbody id="clicks-body"><tr><td colspan="7" class="empty">불러오는 중...</td></tr></tbody>
+    <tbody id="clicks-body"><tr><td colspan="6" class="empty">불러오는 중...</td></tr></tbody>
   </table>
 </div>
 
@@ -150,13 +150,6 @@ function fmtKST(iso) {
   }).formatToParts(d);
   const get = (t) => parts.find(p => p.type === t)?.value ?? "";
   return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}:${get("second")}`;
-}
-
-function geoLabel(r) {
-  const parts = [r.geo_city, r.geo_region].filter(Boolean);
-  const place = parts.length ? parts.join(" ") : (r.geo_country || "");
-  if (!place && !r.geo_isp) return '<span class="muted">-</span>';
-  return `${esc(place)}${r.geo_isp ? `<div class="muted" style="font-size:11px;">${esc(r.geo_isp)}</div>` : ""}`;
 }
 
 async function loadStats() {
@@ -192,7 +185,6 @@ async function loadSuspiciousIps() {
     <tr>
       <td><input type="checkbox" class="ip-check" value="${esc(r.ip)}"></td>
       <td>${esc(r.ip)}</td>
-      <td>${geoLabel(r)}</td>
       <td>${r.click_count}</td>
       <td>${r.reasons.split(", ").filter(Boolean).map(x => `<span class="tag">${esc(x)}</span>`).join("")}</td>
       <td class="muted">${fmtKST(r.first_seen)}</td>
@@ -214,7 +206,6 @@ async function loadClicks() {
     <tr>
       <td class="muted">${fmtKST(r.created_at)}</td>
       <td>${esc(r.ip)}</td>
-      <td>${geoLabel(r)}</td>
       <td>${esc(r.keyword)}</td>
       <td>${sourceLabel(r.source)}</td>
       <td class="muted">${esc(r.referrer).slice(0,40)}</td>
