@@ -4,10 +4,15 @@
   Vercel이 api/ 폴더 안의 여러 .py 파일 때문에 엔트리포인트를 못 찾는
   문제를 피하기 위한 조치.
 
-[수정사항] 차단완료 표시한 IP는 기본 목록에서 자동으로 빠지도록 변경.
+[수정사항 1] 차단완료 표시한 IP는 기본 목록에서 자동으로 빠지도록 변경.
   - db_list_suspicious_ips(include_blocked=False)  : 기본은 미차단만 반환
   - GET /api/suspicious-ips?include_blocked=true   : 차단완료 이력도 같이 조회
   - POST /api/suspicious-ips/{ip}/unblock          : 차단완료 취소(되돌리기)
+
+[수정사항 2] 파워링크 광고 클릭이 아닌 트래픽(커뮤니티 유입, 직접방문 등)은
+  부정클릭 판정 대상에서 제외. referrer/NaPm 파라미터로 유입 경로를 분류해서
+  source 컬럼에 저장하고, 부정클릭 탐지 로직은 source='powerlink' 인 클릭에만 적용한다.
+  -> Supabase clicks 테이블에 source 컬럼을 먼저 추가해야 함 (supabase_migration_add_source.sql 참고)
 """
 import csv
 import io
@@ -121,6 +126,10 @@ def db_get_stats() -> dict:
     suspicious_ips = (
         client.table("suspicious_ips").select("ip", count="exact").eq("blocked", False).execute().count or 0
     )
+    # [신규] 실제로 파워링크 광고비가 나간 클릭이 몇 건인지 (n_ad/n_keyword_id 있는 것만)
+    powerlink_clicks = (
+        client.table("clicks").select("id", count="exact").eq("source", "powerlink").execute().count or 0
+    )
 
     all_ips = client.table("clicks").select("ip").execute().data or []
     unique_ip = len({r["ip"] for r in all_ips})
@@ -131,13 +140,16 @@ def db_get_stats() -> dict:
         "unique_ips": unique_ip,
         "suspicious_ips": suspicious_ips,
         "suspicious_clicks": suspicious_clicks,
+        "powerlink_clicks": powerlink_clicks,
     }
 
 
-def db_list_clicks(limit: int = 100, suspicious_only: bool = False):
+def db_list_clicks(limit: int = 100, suspicious_only: bool = False, source: str = ""):
     q = get_client().table("clicks").select("*").order("created_at", desc=True).limit(limit)
     if suspicious_only:
         q = q.eq("is_suspicious", True)
+    if source:
+        q = q.eq("source", source)
     return q.execute().data or []
 
 
@@ -171,7 +183,30 @@ RAPID_RECLICK_SECONDS = 3
 BOT_UA_KEYWORDS = [
     "bot", "crawler", "spider", "headless", "phantomjs",
     "curl", "wget", "python-requests", "scrapy", "puppeteer",
+    "ads-naver",  # 네이버 자체 광고 검수/모니터링 봇 (naver.me/adsn)
 ]
+
+
+def classify_source(referrer: str, landing_url: str, click_id: str) -> str:
+    """
+    [신규] 유입 경로 라벨링 (참고/필터용 - 부정클릭 판정에는 영향 없음).
+
+    dcinside/fmkorea 같은 곳도 네이버 파워링크 "매체 네트워크"라서 그쪽에서
+    파워링크 광고를 클릭해도 referrer는 그 커뮤니티 사이트로 찍힌다.
+    그래서 referrer 도메인만으로는 "광고 클릭인지 아닌지" 믿을 수 없고,
+    네이버 "자동 추적 URL 파라미터"가 landing_url에 남기는 n_ad / n_keyword_id
+    파라미터 유무가 훨씬 신뢰할 수 있는 신호다 (매체가 어디든 이게 있으면 100% 광고 클릭).
+    """
+    landing_l = (landing_url or "").lower()
+    referrer_l = (referrer or "").lower()
+
+    if "n_ad=" in landing_l or "n_keyword_id=" in landing_l or "ad.search.naver.com" in referrer_l:
+        return "powerlink"
+    if "gclid=" in landing_l or "google" in referrer_l or (click_id or "").isdigit():
+        return "google_ads"
+    if not referrer_l:
+        return "direct"
+    return "referral"
 
 
 def check_click(ip: str, user_agent: str, created_at: datetime):
@@ -243,7 +278,12 @@ async def record_click(request: Request):
     now = datetime.now(timezone.utc)
     now_iso = now.isoformat()
 
+    # 부정클릭 탐지는 유입경로 상관없이 전체 트래픽에 그대로 적용한다.
+    # (dcinside/fmkorea 같은 매체 네트워크로 들어온 진짜 파워링크 클릭도 놓치지 않기 위함)
     is_suspicious, reasons = check_click(ip, user_agent, now)
+
+    # source는 판정용이 아니라 대시보드에서 "어디서 들어왔는지" 구분해서 보기 위한 라벨.
+    source = classify_source(referrer, landing_url, click_id)
 
     db_insert_click({
         "ip": ip,
@@ -256,6 +296,7 @@ async def record_click(request: Request):
         "created_at": now_iso,
         "is_suspicious": is_suspicious,
         "reasons": ", ".join(reasons),
+        "source": source,
     })
 
     history = []
@@ -286,8 +327,8 @@ def get_stats():
 
 
 @app.get("/api/clicks")
-def list_clicks(limit: int = 100, suspicious_only: bool = False):
-    return db_list_clicks(limit=limit, suspicious_only=suspicious_only)
+def list_clicks(limit: int = 100, suspicious_only: bool = False, source: str = ""):
+    return db_list_clicks(limit=limit, suspicious_only=suspicious_only, source=source)
 
 
 @app.get("/api/suspicious-ips")
@@ -326,17 +367,17 @@ def export_suspicious_csv():
 
 
 @app.get("/api/export/clicks.csv")
-def export_clicks_csv(suspicious_only: bool = False):
-    rows = db_list_clicks(limit=10000, suspicious_only=suspicious_only)
+def export_clicks_csv(suspicious_only: bool = False, source: str = ""):
+    rows = db_list_clicks(limit=10000, suspicious_only=suspicious_only, source=source)
 
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow(["id", "ip", "user_agent", "referrer", "landing_url", "keyword",
-                      "click_id", "session_id", "created_at", "is_suspicious", "reasons"])
+                      "click_id", "session_id", "created_at", "is_suspicious", "reasons", "source"])
     for r in rows:
         writer.writerow([r.get("id"), r.get("ip"), r.get("user_agent"), r.get("referrer"), r.get("landing_url"),
                           r.get("keyword"), r.get("click_id"), r.get("session_id"), r.get("created_at"),
-                          r.get("is_suspicious"), r.get("reasons")])
+                          r.get("is_suspicious"), r.get("reasons"), r.get("source")])
     buf.seek(0)
 
     return StreamingResponse(
